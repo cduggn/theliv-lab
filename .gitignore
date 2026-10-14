@@ -1,5 +1,13 @@
-﻿.vscode
+.vscode
 node_modules
 dist
 .DS_Store
 localdockerbuild.sh
+
+# Local demo credentials, caches, binaries and process state
+.local/
+__pycache__/
+
+# Certificate serial state and local transfer package
+.srl
+handoff/

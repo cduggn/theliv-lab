@@ -140,6 +140,7 @@ func (c *AuthConfig) ToMaskString() string {
 }
 
 type PrometheusConfig struct {
+	Scheme    string `json:"scheme,omitempty"` // Service-proxy scheme; defaults to https.
 	Address   string `json:"address"`
 	Namespace string `json:"namespace"`
 	Name      string `json:"name"`

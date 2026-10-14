@@ -1,0 +1,468 @@
+{
+  "alertmanager": {
+    "enabled": false
+  },
+  "prometheus-node-exporter": {
+    "enabled": false
+  },
+  "prometheus-pushgateway": {
+    "enabled": false
+  },
+  "kube-state-metrics": {
+    "enabled": true,
+    "fullnameOverride": "theliv-kube-state-metrics",
+    "resources": {
+      "requests": {
+        "cpu": "50m",
+        "memory": "64Mi"
+      },
+      "limits": {
+        "memory": "256Mi"
+      }
+    }
+  },
+  "server": {
+    "fullnameOverride": "theliv-prometheus",
+    "persistentVolume": {
+      "enabled": false
+    },
+    "retention": "6h",
+    "global": {
+      "scrape_interval": "15s",
+      "evaluation_interval": "15s"
+    },
+    "resources": {
+      "requests": {
+        "cpu": "100m",
+        "memory": "256Mi"
+      },
+      "limits": {
+        "memory": "1Gi"
+      }
+    }
+  },
+  "serverFiles": {
+    "alerting_rules.yml": {
+      "groups": [
+        {
+          "name": "theliv",
+          "rules": [
+            {
+              "alert": "PodNotRunning",
+              "expr": "kube_pod_status_phase{job='kube-state-metrics',phase=~'Failed|Pending|Unknown'} * on(uid) group_left(owner_kind, owner_is_controller, owner_name) kube_pod_owner{job='kube-state-metrics'} >0",
+              "for": "30s",
+              "labels": {
+                "resourcetype": "pod"
+              },
+              "annotations": {
+                "summary": "PodNotRunning",
+                "description": "PodNotRunning detected in {{ $labels.namespace }} on {{ $labels.pod }}{{ $labels.deployment }}{{ $labels.node }}."
+              }
+            },
+            {
+              "alert": "PodNotReady",
+              "expr": "kube_pod_status_phase{job='kube-state-metrics',phase='Running'} * on(uid) group_left(condition) kube_pod_status_ready{job='kube-state-metrics', condition='false'} * on(uid) group_left(owner_kind, owner_is_controller, owner_name) kube_pod_owner{job='kube-state-metrics'} >0",
+              "for": "30s",
+              "labels": {
+                "resourcetype": "pod"
+              },
+              "annotations": {
+                "summary": "PodNotReady",
+                "description": "PodNotReady detected in {{ $labels.namespace }} on {{ $labels.pod }}{{ $labels.deployment }}{{ $labels.node }}."
+              }
+            },
+            {
+              "alert": "ContainerWaitingAsCrashLoopBackoff",
+              "expr": "kube_pod_container_status_waiting_reason{job='kube-state-metrics', reason='CrashLoopBackOff'} * on(uid, container) group_left(image) kube_pod_container_info{job='kube-state-metrics'} * on(uid) group_left(owner_kind, owner_is_controller, owner_name) kube_pod_owner{job='kube-state-metrics'} >0",
+              "for": "30s",
+              "labels": {
+                "resourcetype": "container"
+              },
+              "annotations": {
+                "summary": "ContainerWaitingAsCrashLoopBackoff",
+                "description": "ContainerWaitingAsCrashLoopBackoff detected in {{ $labels.namespace }} on {{ $labels.pod }}{{ $labels.deployment }}{{ $labels.node }}."
+              }
+            },
+            {
+              "alert": "ContainerWaitingAsImagePullBackOff",
+              "expr": "kube_pod_container_status_waiting_reason{job='kube-state-metrics', reason=~'ImagePullBackOff|ErrImagePull|InvalidImageName'} * on(uid, container) group_left(image) kube_pod_container_info{job='kube-state-metrics'} * on(uid) group_left(owner_kind, owner_is_controller, owner_name) kube_pod_owner{job='kube-state-metrics'} >0",
+              "for": "30s",
+              "labels": {
+                "resourcetype": "container"
+              },
+              "annotations": {
+                "summary": "ContainerWaitingAsImagePullBackOff",
+                "description": "ContainerWaitingAsImagePullBackOff detected in {{ $labels.namespace }} on {{ $labels.pod }}{{ $labels.deployment }}{{ $labels.node }}."
+              }
+            },
+            {
+              "alert": "ContainerWaitingAsCreateContainerError",
+              "expr": "kube_pod_container_status_waiting_reason{job='kube-state-metrics', reason=~'CreateContainerConfigError|CreateContainerError'} * on(uid, container) group_left(image) kube_pod_container_info{job='kube-state-metrics'} * on(uid) group_left(owner_kind, owner_is_controller, owner_name) kube_pod_owner{job='kube-state-metrics'} >0",
+              "for": "30s",
+              "labels": {
+                "resourcetype": "container"
+              },
+              "annotations": {
+                "summary": "ContainerWaitingAsCreateContainerError",
+                "description": "ContainerWaitingAsCreateContainerError detected in {{ $labels.namespace }} on {{ $labels.pod }}{{ $labels.deployment }}{{ $labels.node }}."
+              }
+            },
+            {
+              "alert": "ContainerTerminatedAsOOMKilled",
+              "expr": "kube_pod_container_status_terminated_reason{job='kube-state-metrics',reason='OOMKilled'} * on(uid, container) group_left(image) kube_pod_container_info{job='kube-state-metrics'} * on(uid) group_left(owner_kind, owner_is_controller, owner_name) kube_pod_owner{job='kube-state-metrics'} >0",
+              "for": "30s",
+              "labels": {
+                "resourcetype": "container"
+              },
+              "annotations": {
+                "summary": "ContainerTerminatedAsOOMKilled",
+                "description": "ContainerTerminatedAsOOMKilled detected in {{ $labels.namespace }} on {{ $labels.pod }}{{ $labels.deployment }}{{ $labels.node }}."
+              }
+            },
+            {
+              "alert": "ContainerTerminatedAsError",
+              "expr": "kube_pod_container_status_terminated_reason{job='kube-state-metrics',reason='Error'} * on(uid, container) group_left(image) kube_pod_container_info{job='kube-state-metrics'} * on(uid) group_left(owner_kind, owner_is_controller, owner_name) kube_pod_owner{job='kube-state-metrics'} >0",
+              "for": "30s",
+              "labels": {
+                "resourcetype": "container"
+              },
+              "annotations": {
+                "summary": "ContainerTerminatedAsError",
+                "description": "ContainerTerminatedAsError detected in {{ $labels.namespace }} on {{ $labels.pod }}{{ $labels.deployment }}{{ $labels.node }}."
+              }
+            },
+            {
+              "alert": "ContainerTerminatedAsContainerCannotRun",
+              "expr": "kube_pod_container_status_terminated_reason{job='kube-state-metrics',reason='ContainerCannotRun'} * on(uid, container) group_left(image) kube_pod_container_info{job='kube-state-metrics'} * on(uid) group_left(owner_kind, owner_is_controller, owner_name) kube_pod_owner{job='kube-state-metrics'} >0",
+              "for": "30s",
+              "labels": {
+                "resourcetype": "container"
+              },
+              "annotations": {
+                "summary": "ContainerTerminatedAsContainerCannotRun",
+                "description": "ContainerTerminatedAsContainerCannotRun detected in {{ $labels.namespace }} on {{ $labels.pod }}{{ $labels.deployment }}{{ $labels.node }}."
+              }
+            },
+            {
+              "alert": "ContainerTerminatedAsDeadlineExceeded",
+              "expr": "kube_pod_container_status_terminated_reason{job='kube-state-metrics',reason='DeadlineExceeded'} * on(uid, container) group_left(image) kube_pod_container_info{job='kube-state-metrics'} * on(uid) group_left(owner_kind, owner_is_controller, owner_name) kube_pod_owner{job='kube-state-metrics'} >0",
+              "for": "30s",
+              "labels": {
+                "resourcetype": "container"
+              },
+              "annotations": {
+                "summary": "ContainerTerminatedAsDeadlineExceeded",
+                "description": "ContainerTerminatedAsDeadlineExceeded detected in {{ $labels.namespace }} on {{ $labels.pod }}{{ $labels.deployment }}{{ $labels.node }}."
+              }
+            },
+            {
+              "alert": "ContainerTerminatedAsEvicted",
+              "expr": "kube_pod_container_status_terminated_reason{job='kube-state-metrics',reason='Evicted'} * on(uid, container) group_left(image) kube_pod_container_info{job='kube-state-metrics'} * on(uid) group_left(owner_kind, owner_is_controller, owner_name) kube_pod_owner{job='kube-state-metrics'} >0",
+              "for": "30s",
+              "labels": {
+                "resourcetype": "container"
+              },
+              "annotations": {
+                "summary": "ContainerTerminatedAsEvicted",
+                "description": "ContainerTerminatedAsEvicted detected in {{ $labels.namespace }} on {{ $labels.pod }}{{ $labels.deployment }}{{ $labels.node }}."
+              }
+            },
+            {
+              "alert": "InitContainerWaitingAsCrashLoopBackoff",
+              "expr": "kube_pod_init_container_status_waiting_reason{job='kube-state-metrics', reason='CrashLoopBackOff'} * on(uid, container) group_left(image) kube_pod_init_container_info{job='kube-state-metrics'} * on(uid) group_left(owner_kind, owner_is_controller, owner_name) kube_pod_owner{job='kube-state-metrics'} >0",
+              "for": "30s",
+              "labels": {
+                "resourcetype": "container"
+              },
+              "annotations": {
+                "summary": "InitContainerWaitingAsCrashLoopBackoff",
+                "description": "InitContainerWaitingAsCrashLoopBackoff detected in {{ $labels.namespace }} on {{ $labels.pod }}{{ $labels.deployment }}{{ $labels.node }}."
+              }
+            },
+            {
+              "alert": "InitContainerWaitingAsImagePullBackOff",
+              "expr": "kube_pod_init_container_status_waiting_reason{job='kube-state-metrics', reason=~'ImagePullBackOff|ErrImagePull|InvalidImageName'} * on(uid, container) group_left(image) kube_pod_init_container_info{job='kube-state-metrics'} * on(uid) group_left(owner_kind, owner_is_controller, owner_name) kube_pod_owner{job='kube-state-metrics'} >0",
+              "for": "30s",
+              "labels": {
+                "resourcetype": "container"
+              },
+              "annotations": {
+                "summary": "InitContainerWaitingAsImagePullBackOff",
+                "description": "InitContainerWaitingAsImagePullBackOff detected in {{ $labels.namespace }} on {{ $labels.pod }}{{ $labels.deployment }}{{ $labels.node }}."
+              }
+            },
+            {
+              "alert": "InitContainerTerminatedAsOOMKilled",
+              "expr": "kube_pod_init_container_status_terminated_reason{job='kube-state-metrics',reason='OOMKilled'} * on(uid, container) group_left(image) kube_pod_init_container_info{job='kube-state-metrics'} * on(uid) group_left(owner_kind, owner_is_controller, owner_name) kube_pod_owner{job='kube-state-metrics'} >0",
+              "for": "30s",
+              "labels": {
+                "resourcetype": "container"
+              },
+              "annotations": {
+                "summary": "InitContainerTerminatedAsOOMKilled",
+                "description": "InitContainerTerminatedAsOOMKilled detected in {{ $labels.namespace }} on {{ $labels.pod }}{{ $labels.deployment }}{{ $labels.node }}."
+              }
+            },
+            {
+              "alert": "InitContainerTerminatedAsError",
+              "expr": "kube_pod_init_container_status_terminated_reason{job='kube-state-metrics',reason='Error'} * on(uid, container) group_left(image) kube_pod_init_container_info{job='kube-state-metrics'} * on(uid) group_left(owner_kind, owner_is_controller, owner_name) kube_pod_owner{job='kube-state-metrics'} >0",
+              "for": "30s",
+              "labels": {
+                "resourcetype": "container"
+              },
+              "annotations": {
+                "summary": "InitContainerTerminatedAsError",
+                "description": "InitContainerTerminatedAsError detected in {{ $labels.namespace }} on {{ $labels.pod }}{{ $labels.deployment }}{{ $labels.node }}."
+              }
+            },
+            {
+              "alert": "InitContainerTerminatedAsContainerCannotRun",
+              "expr": "kube_pod_init_container_status_terminated_reason{job='kube-state-metrics',reason='ContainerCannotRun'} * on(uid, container) group_left(image) kube_pod_init_container_info{job='kube-state-metrics'} * on(uid) group_left(owner_kind, owner_is_controller, owner_name) kube_pod_owner{job='kube-state-metrics'} >0",
+              "for": "30s",
+              "labels": {
+                "resourcetype": "container"
+              },
+              "annotations": {
+                "summary": "InitContainerTerminatedAsContainerCannotRun",
+                "description": "InitContainerTerminatedAsContainerCannotRun detected in {{ $labels.namespace }} on {{ $labels.pod }}{{ $labels.deployment }}{{ $labels.node }}."
+              }
+            },
+            {
+              "alert": "InitContainerTerminatedAsDeadlineExceeded",
+              "expr": "kube_pod_init_container_status_terminated_reason{job='kube-state-metrics',reason='DeadlineExceeded'} * on(uid, container) group_left(image) kube_pod_init_container_info{job='kube-state-metrics'} * on(uid) group_left(owner_kind, owner_is_controller, owner_name) kube_pod_owner{job='kube-state-metrics'} >0",
+              "for": "30s",
+              "labels": {
+                "resourcetype": "container"
+              },
+              "annotations": {
+                "summary": "InitContainerTerminatedAsDeadlineExceeded",
+                "description": "InitContainerTerminatedAsDeadlineExceeded detected in {{ $labels.namespace }} on {{ $labels.pod }}{{ $labels.deployment }}{{ $labels.node }}."
+              }
+            },
+            {
+              "alert": "InitContainerTerminatedAsEvicted",
+              "expr": "kube_pod_init_container_status_terminated_reason{job='kube-state-metrics',reason='Evicted'} * on(uid, container) group_left(image) kube_pod_init_container_info{job='kube-state-metrics'} * on(uid) group_left(owner_kind, owner_is_controller, owner_name) kube_pod_owner{job='kube-state-metrics'} >0",
+              "for": "30s",
+              "labels": {
+                "resourcetype": "container"
+              },
+              "annotations": {
+                "summary": "InitContainerTerminatedAsEvicted",
+                "description": "InitContainerTerminatedAsEvicted detected in {{ $labels.namespace }} on {{ $labels.pod }}{{ $labels.deployment }}{{ $labels.node }}."
+              }
+            },
+            {
+              "alert": "DeploymentNotAvailable",
+              "expr": "kube_deployment_status_condition{job='kube-state-metrics', condition='Available', status!='true'} >0",
+              "for": "30s",
+              "labels": {
+                "resourcetype": "deployment"
+              },
+              "annotations": {
+                "summary": "DeploymentNotAvailable",
+                "description": "DeploymentNotAvailable detected in {{ $labels.namespace }} on {{ $labels.pod }}{{ $labels.deployment }}{{ $labels.node }}."
+              }
+            },
+            {
+              "alert": "DeploymentGenerationMismatch",
+              "expr": "kube_deployment_status_observed_generation{job='kube-state-metrics'} - on (deployment, namespace) kube_deployment_metadata_generation{job='kube-state-metrics'} !=0",
+              "for": "30s",
+              "labels": {
+                "resourcetype": "deployment"
+              },
+              "annotations": {
+                "summary": "DeploymentGenerationMismatch",
+                "description": "DeploymentGenerationMismatch detected in {{ $labels.namespace }} on {{ $labels.pod }}{{ $labels.deployment }}{{ $labels.node }}."
+              }
+            },
+            {
+              "alert": "DeploymentReplicasMismatch",
+              "expr": "(kube_deployment_spec_replicas{job='kube-state-metrics'} - on(deployment, namespace) kube_deployment_status_replicas_available{job='kube-state-metrics'} !=0 ) and (kube_deployment_status_replicas_updated ==0)",
+              "for": "30s",
+              "labels": {
+                "resourcetype": "deployment"
+              },
+              "annotations": {
+                "summary": "DeploymentReplicasMismatch",
+                "description": "DeploymentReplicasMismatch detected in {{ $labels.namespace }} on {{ $labels.pod }}{{ $labels.deployment }}{{ $labels.node }}."
+              }
+            },
+            {
+              "alert": "NodeNotReady",
+              "expr": "kube_node_status_condition{job='kube-state-metrics', condition!='Ready', status=~'true|unknown'} >0",
+              "for": "30s",
+              "labels": {
+                "resourcetype": "node"
+              },
+              "annotations": {
+                "summary": "NodeNotReady",
+                "description": "NodeNotReady detected in {{ $labels.namespace }} on {{ $labels.pod }}{{ $labels.deployment }}{{ $labels.node }}."
+              }
+            },
+            {
+              "alert": "NodeDiskPressure",
+              "expr": "kube_node_status_condition{job='kube-state-metrics', condition='DiskPressure', status='true'} >0",
+              "for": "30s",
+              "labels": {
+                "resourcetype": "node"
+              },
+              "annotations": {
+                "summary": "NodeDiskPressure",
+                "description": "NodeDiskPressure detected in {{ $labels.namespace }} on {{ $labels.pod }}{{ $labels.deployment }}{{ $labels.node }}."
+              }
+            },
+            {
+              "alert": "NodeMemoryPressure",
+              "expr": "kube_node_status_condition{job='kube-state-metrics', condition='MemoryPressure', status='true'} >0",
+              "for": "30s",
+              "labels": {
+                "resourcetype": "node"
+              },
+              "annotations": {
+                "summary": "NodeMemoryPressure",
+                "description": "NodeMemoryPressure detected in {{ $labels.namespace }} on {{ $labels.pod }}{{ $labels.deployment }}{{ $labels.node }}."
+              }
+            },
+            {
+              "alert": "NodePIDPressure",
+              "expr": "kube_node_status_condition{job='kube-state-metrics', condition='PIDPressure', status='true'} >0",
+              "for": "30s",
+              "labels": {
+                "resourcetype": "node"
+              },
+              "annotations": {
+                "summary": "NodePIDPressure",
+                "description": "NodePIDPressure detected in {{ $labels.namespace }} on {{ $labels.pod }}{{ $labels.deployment }}{{ $labels.node }}."
+              }
+            },
+            {
+              "alert": "NodeNetworkUnavailable",
+              "expr": "kube_node_status_condition{job='kube-state-metrics', condition='NetworkUnavailable', status='true'} >0",
+              "for": "30s",
+              "labels": {
+                "resourcetype": "node"
+              },
+              "annotations": {
+                "summary": "NodeNetworkUnavailable",
+                "description": "NodeNetworkUnavailable detected in {{ $labels.namespace }} on {{ $labels.pod }}{{ $labels.deployment }}{{ $labels.node }}."
+              }
+            },
+            {
+              "alert": "EndpointAddressNotAvailable",
+              "expr": "kube_endpoint_address_available{job='kube-state-metrics'} == 0",
+              "for": "30s",
+              "labels": {
+                "resourcetype": "endpoint"
+              },
+              "annotations": {
+                "summary": "EndpointAddressNotAvailable",
+                "description": "EndpointAddressNotAvailable detected in {{ $labels.namespace }} on {{ $labels.pod }}{{ $labels.deployment }}{{ $labels.node }}."
+              }
+            },
+            {
+              "alert": "StatefulsetGenerationMismatch",
+              "expr": "kube_statefulset_status_observed_generation{job='kube-state-metrics'} - on (statefulset, namespace) kube_statefulset_metadata_generation{job='kube-state-metrics'} !=0",
+              "for": "30s",
+              "labels": {
+                "resourcetype": "statefulset"
+              },
+              "annotations": {
+                "summary": "StatefulsetGenerationMismatch",
+                "description": "StatefulsetGenerationMismatch detected in {{ $labels.namespace }} on {{ $labels.pod }}{{ $labels.deployment }}{{ $labels.node }}."
+              }
+            },
+            {
+              "alert": "StatefulsetReplicasMismatch",
+              "expr": "(kube_statefulset_replicas{job='kube-state-metrics'} - on(deployment, namespace) kube_statefulset_status_replicas_ready{job='kube-state-metrics'} !=0 ) and (kube_statefulset_status_replicas_updated{job='kube-state-metrics'} ==0)",
+              "for": "30s",
+              "labels": {
+                "resourcetype": "statefulset"
+              },
+              "annotations": {
+                "summary": "StatefulsetReplicasMismatch",
+                "description": "StatefulsetReplicasMismatch detected in {{ $labels.namespace }} on {{ $labels.pod }}{{ $labels.deployment }}{{ $labels.node }}."
+              }
+            },
+            {
+              "alert": "StatefulsetUpdateNotRolledOut",
+              "expr": "(max without (revision) (kube_statefulset_status_current_revision{job='kube-state-metrics'} unless kube_statefulset_status_update_revision{job='kube-state-metrics'}) *  (kube_statefulset_replicas{job='kube-state-metrics'} != kube_statefulset_status_replicas_updated{job='kube-state-metrics'})) and (changes(kube_statefulset_status_replicas_updated{job='kube-state-metrics'}[5m]) == 0)",
+              "for": "30s",
+              "labels": {
+                "resourcetype": "statefulset"
+              },
+              "annotations": {
+                "summary": "StatefulsetUpdateNotRolledOut",
+                "description": "StatefulsetUpdateNotRolledOut detected in {{ $labels.namespace }} on {{ $labels.pod }}{{ $labels.deployment }}{{ $labels.node }}."
+              }
+            },
+            {
+              "alert": "DaemonSetRolloutStuck",
+              "expr": "((kube_daemonset_status_current_number_scheduled{job='kube-state-metrics'}!=kube_daemonset_status_desired_number_scheduled{job='kube-state-metrics'}) or (kube_daemonset_status_number_misscheduled{job='kube-state-metrics'}!=0) or (kube_daemonset_status_updated_number_scheduled{job='kube-state-metrics'}!=kube_daemonset_status_desired_number_scheduled{job='kube-state-metrics'}) or (kube_daemonset_status_number_available{job='kube-state-metrics'}!=kube_daemonset_status_desired_number_scheduled{job='kube-state-metrics'})) and (changes(kube_daemonset_status_updated_number_scheduled{job='kube-state-metrics'}[5m])==0)",
+              "for": "30s",
+              "labels": {
+                "resourcetype": "daemonset"
+              },
+              "annotations": {
+                "summary": "DaemonSetRolloutStuck",
+                "description": "DaemonSetRolloutStuck detected in {{ $labels.namespace }} on {{ $labels.pod }}{{ $labels.deployment }}{{ $labels.node }}."
+              }
+            },
+            {
+              "alert": "DaemonSetNotScheduled",
+              "expr": "kube_daemonset_status_desired_number_scheduled{job='kube-state-metrics'} - kube_daemonset_status_current_number_scheduled{job='kube-state-metrics'} > 0",
+              "for": "30s",
+              "labels": {
+                "resourcetype": "daemonset"
+              },
+              "annotations": {
+                "summary": "DaemonSetNotScheduled",
+                "description": "DaemonSetNotScheduled detected in {{ $labels.namespace }} on {{ $labels.pod }}{{ $labels.deployment }}{{ $labels.node }}."
+              }
+            },
+            {
+              "alert": "DaemonSetMissScheduled",
+              "expr": "kube_daemonset_status_number_misscheduled{job='kube-state-metrics'}>0",
+              "for": "30s",
+              "labels": {
+                "resourcetype": "daemonset"
+              },
+              "annotations": {
+                "summary": "DaemonSetMissScheduled",
+                "description": "DaemonSetMissScheduled detected in {{ $labels.namespace }} on {{ $labels.pod }}{{ $labels.deployment }}{{ $labels.node }}."
+              }
+            },
+            {
+              "alert": "DaemonSetUnavailable",
+              "expr": "kube_daemonset_status_number_unavailable{job='kube-state-metrics'} >0",
+              "for": "30s",
+              "labels": {
+                "resourcetype": "daemonset"
+              },
+              "annotations": {
+                "summary": "DaemonSetUnavailable",
+                "description": "DaemonSetUnavailable detected in {{ $labels.namespace }} on {{ $labels.pod }}{{ $labels.deployment }}{{ $labels.node }}."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "prometheus.yml": {
+      "rule_files": [
+        "/etc/config/alerting_rules.yml"
+      ],
+      "scrape_configs": [
+        {
+          "job_name": "kube-state-metrics",
+          "static_configs": [
+            {
+              "targets": [
+                "theliv-kube-state-metrics:8080"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

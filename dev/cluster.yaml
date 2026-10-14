@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: theliv-system
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: theliv-demo
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: theliv-reader
+  namespace: theliv-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: theliv-reader
+rules:
+  - apiGroups: [""]
+    resources: [pods, pods/log, namespaces, nodes, events, services, endpoints, persistentvolumes, persistentvolumeclaims, replicationcontrollers, configmaps, limitranges, resourcequotas]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [services/proxy]
+    verbs: [get]
+  - apiGroups: [apps, batch, networking.k8s.io, storage.k8s.io, autoscaling, policy, discovery.k8s.io]
+    resources: ["*"]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: theliv-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: theliv-reader
+subjects:
+  - kind: ServiceAccount
+    name: theliv-reader
+    namespace: theliv-system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: missing-image
+  namespace: theliv-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: missing-image
+  template:
+    metadata:
+      labels:
+        app: missing-image
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: demo
+          image: busybox:theliv-intentionally-missing
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 32Mi

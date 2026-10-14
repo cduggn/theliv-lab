@@ -8,6 +8,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net"
 
 	"net/http"
 	"strings"
@@ -20,6 +21,8 @@ import (
 
 func main() {
 	var thelivConfig, etcdca, etcdcert, etcdkey, etcdendpoints string
+	var listenAddress string
+	flag.StringVar(&listenAddress, "listen-address", "", "address to bind the API server (empty means all interfaces)")
 	flag.StringVar(&thelivConfig, "config", "", "theliv -config <full path of theliv.yaml>")
 	flag.StringVar(&etcdca, "ca", "", "theliv -ca <full path of etcd ca cert file>")
 	flag.StringVar(&etcdcert, "cert", "", "theliv -cert <full path of etcd cert file>")
@@ -50,7 +53,7 @@ func main() {
 	// init default logger
 	log.NewDefaultLogger(log.DefaultLogConfig(theliv.LogLevel))
 
-	err := http.ListenAndServe(fmt.Sprintf(":%v", theliv.Port), r)
+	err := http.ListenAndServe(net.JoinHostPort(listenAddress, fmt.Sprint(theliv.Port)), r)
 	if err != nil {
 		log.S().Fatalf("Failed to start server, %v", err)
 	}

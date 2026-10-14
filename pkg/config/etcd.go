@@ -148,6 +148,10 @@ func (ecl *EtcdConfigLoader) loadOidcConfig() error {
 	if err != nil {
 		return err
 	}
+	if strings.TrimSpace(conf.OidcProvider) == "" {
+		thelivConfig.Oidc = nil
+		return nil
+	}
 	thelivConfig.Oidc = conf
 	log.S().Infof("Successfully load oidc config, provider is: %s.\n", conf.OidcProvider)
 	return nil

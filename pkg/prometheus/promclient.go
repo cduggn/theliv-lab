@@ -88,8 +88,10 @@ func buildTLSRoundTripper(kubeconfig *rest.Config) (http.RoundTripper, error) {
 
 func GetAlerts(ctx context.Context, input *problem.DetectorCreationInput) (v1.AlertsResult, error) {
 	promcfg := config.GetThelivConfig().Prometheus
-	address := input.Kubeconfig.Host + "/api/v1/namespaces/" +
-		promcfg.Namespace + "/services/https:" + promcfg.Name + ":" + promcfg.Port + "/proxy"
+	address, err := serviceProxyAddress(input.Kubeconfig.Host, promcfg.Namespace, promcfg.Name, promcfg.Port, promcfg.Scheme)
+	if err != nil {
+		return v1.AlertsResult{}, err
+	}
 
 	transport, err := buildTLSRoundTripper(input.Kubeconfig)
 	if err != nil {

@@ -1,0 +1,7 @@
+[
+  "/clusters",
+  "/clusters/rks-local/namespaces",
+  "/detector/rks-local/*",
+  "/userinfo",
+  "/configinfo"
+]
