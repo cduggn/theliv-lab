@@ -10,6 +10,7 @@ import { tap } from 'rxjs/operators';
 import { WindowToken } from './window';
 import { MatDialog } from '@angular/material/dialog';
 import { ErrorDialog } from '../errors/error-dialog.component';
+import { INLINE_HTTP_ERRORS } from './inline-http-errors';
 
 @Injectable()
 export class UnauthorizedInterceptor implements HttpInterceptor {
@@ -24,6 +25,13 @@ export class UnauthorizedInterceptor implements HttpInterceptor {
                 return;
             }, (err) => {
                 if (err instanceof HttpErrorResponse) {
+                    if (req.context.get(INLINE_HTTP_ERRORS)) {
+                        const location = err.headers.get('X-Location');
+                        if (err.status === 401 && location) {
+                            this.window.location.href = location;
+                        }
+                        return;
+                    }
                     if (err.error instanceof ErrorEvent) {
                         console.error("Error Event");
                     } else {

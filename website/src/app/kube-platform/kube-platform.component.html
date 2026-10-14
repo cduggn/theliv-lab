@@ -1,173 +1,183 @@
-<!-- /*
- * Copyright FMR LLC <opensource@fidelity.com>
- *
- * SPDX-License-Identifier: Apache
- */ -->
-<div class="search-menu">
-    <div class="search-bar">
-        <fa-icon class="search" [icon]="faSearch"></fa-icon>
-        <input type="text" readonly class="search-box" autofocus="">
-        <div class="search-items">
-            <div *ngIf="selectedClusters" class="search item">
-                <span>{{selectedClusters}}</span>
-                <fa-icon class="close-icon" [icon]="faTimes" (click)="selectedClusters=''; selectedNs=''; namespaces=[]; resourceGroups=[]; resourceTypes=[]; proDomains=[]; resourceNames=[]"></fa-icon>
+<main class="investigations">
+  <header class="page-heading">
+    <div><p class="eyebrow">Kubernetes workspace</p><h1>Investigations<span class="heading-dot">.</span></h1>
+      <p class="page-description">Understand what happened. Find the evidence. Decide what comes next.</p></div>
+    <span class="mode-label"><span class="status-dot"></span> Read-only checks</span>
+  </header>
+
+  <section class="scope-bar" aria-label="Investigation scope">
+    <div class="scope-icon"><fa-icon [icon]="icons.cube"></fa-icon></div>
+    <label class="scope-field" for="cluster"><span>Cluster</span>
+      <select id="cluster" name="cluster" [ngModel]="cluster" (ngModelChange)="changeCluster($event)" [disabled]="loadingClusters">
+        <option value="">{{loadingClusters ? 'Loading clusters…' : 'Select a cluster'}}</option>
+        <option *ngIf="cluster && !clusters.includes(cluster)" [value]="cluster">{{cluster}}</option>
+        <option *ngFor="let option of clusters" [value]="option">{{option}}</option>
+      </select>
+    </label>
+    <span class="scope-divider" aria-hidden="true">/</span>
+    <label class="scope-field" for="namespace"><span>Namespace</span>
+      <select id="namespace" name="namespace" [ngModel]="namespace" (ngModelChange)="changeNamespace($event)" [disabled]="!cluster || loadingNamespaces">
+        <option value="">{{loadingNamespaces ? 'Loading namespaces…' : 'Select a namespace'}}</option>
+        <option *ngIf="namespace && !namespaces.includes(namespace)" [value]="namespace">{{namespace}}</option>
+        <option *ngFor="let option of namespaces" [value]="option">{{option}}</option>
+      </select>
+    </label>
+    <div class="scope-actions">
+      <span class="freshness" aria-live="polite"><ng-container *ngIf="loading">Running checks…</ng-container>
+        <ng-container *ngIf="!loading && lastChecked">{{detectionError ? 'Last success' : 'Checked'}} {{lastChecked | date:'HH:mm:ss'}}</ng-container>
+        <ng-container *ngIf="!loading && !lastChecked">Not checked yet</ng-container></span>
+      <button class="button secondary compact" (click)="refresh()" [disabled]="!cluster || !namespace || busy" aria-label="Refresh diagnostic checks and events">
+        <fa-icon [icon]="icons.refresh" [spin]="busy"></fa-icon> Refresh
+      </button>
+    </div>
+  </section>
+  <div class="notice error" *ngIf="clusterError" role="alert"><span>{{clusterError}}</span><button (click)="loadClusters()">Retry</button></div>
+  <div class="notice error" *ngIf="namespaceError" role="alert"><span>{{namespaceError}}</span><button (click)="loadNamespaces()">Retry</button></div>
+
+  <section class="welcome-state" *ngIf="!cluster || !namespace">
+    <div class="welcome-symbol"><fa-icon [icon]="icons.search"></fa-icon></div>
+    <p class="eyebrow">Start with a scope</p><h2>A clearer view of your cluster</h2>
+    <p>Select a cluster and namespace to explore findings, inspect related events, and review recommended next steps.</p>
+    <p class="muted" *ngIf="!loadingClusters && !clusterError && clusters.length === 0">No clusters are available to your current session.</p>
+    <p class="muted" *ngIf="cluster && !loadingNamespaces && !namespaceError && namespaces.length === 0">No namespaces are available in this cluster.</p>
+    <div class="welcome-steps"><span><b>01</b> Observe</span><span><b>02</b> Investigate</span><span><b>03</b> Review next steps</span></div>
+  </section>
+
+  <ng-container *ngIf="cluster && namespace">
+    <div class="notice error" *ngIf="detectionError" role="alert"><fa-icon [icon]="icons.warning"></fa-icon>
+      <span>{{detectionError}} <strong *ngIf="lastChecked">Showing earlier results from {{lastChecked | date:'mediumTime'}}.</strong></span>
+      <button (click)="refresh()" [disabled]="busy">Retry</button></div>
+    <div class="notice warning" *ngIf="eventsError" role="status"><fa-icon [icon]="icons.warning"></fa-icon>
+      <span>{{eventsError}} <strong *ngIf="eventsChecked">Events below are from {{eventsChecked | date:'mediumTime'}}.</strong></span>
+      <button (click)="refreshEvents()" [disabled]="loadingEvents">Retry events</button></div>
+    <div class="results-bar">
+      <div class="result-summary" aria-live="polite"><span class="status-dot" [class.attention]="findings.length > 0 || !!detectionError"></span>
+        <strong *ngIf="checked">{{findings.length}} {{findings.length === 1 ? 'finding' : 'findings'}}<span *ngIf="detectionError"> · Earlier results</span></strong>
+        <strong *ngIf="!checked">{{loading ? 'Checking this namespace' : 'Results unavailable'}}</strong>
+        <span class="muted">in selected scope</span></div>
+      <button class="text-button" (click)="allEvents = true; selectTab('evidence')">Namespace events <span class="count">{{events.length}}</span><fa-icon [icon]="icons.arrow"></fa-icon></button>
+    </div>
+
+    <div class="workspace-grid" [attr.aria-busy]="loading">
+      <aside class="findings-panel" aria-label="Findings">
+        <div class="panel-heading"><h2>Findings <span class="count">{{visibleFindings.length}}</span></h2>
+          <button class="icon-button" [class.is-active]="filtersOpen" (click)="filtersOpen = !filtersOpen" [attr.aria-expanded]="filtersOpen" aria-controls="finding-filters" aria-label="Toggle finding filters">
+            <fa-icon [icon]="icons.filter"></fa-icon><span *ngIf="activeFilterCount">{{activeFilterCount}}</span>
+          </button></div>
+        <div class="search-field"><fa-icon [icon]="icons.search"></fa-icon>
+          <input type="search" aria-label="Search findings" placeholder="Search findings or resources…" [(ngModel)]="query" (ngModelChange)="filterChanged()">
+        </div>
+        <div id="finding-filters" class="filters" *ngIf="filtersOpen">
+          <label for="kind-filter">Resource type<select id="kind-filter" [(ngModel)]="kindFilter" (ngModelChange)="filterChanged()">
+            <option value="">All resource types</option><option *ngFor="let kind of kinds" [value]="kind">{{kind}}</option></select></label>
+          <label for="reason-filter">Signal<select id="reason-filter" [(ngModel)]="reasonFilter" (ngModelChange)="filterChanged()">
+            <option value="">All signals</option><option *ngFor="let reason of reasons" [value]="reason">{{reason}}</option></select></label>
+          <p *ngIf="nameFilter">Resource: <code>{{nameFilter}}</code></p>
+          <button class="text-button" (click)="clearFilters()">Clear filters</button>
+        </div>
+        <p class="list-caption">{{query || activeFilterCount ? 'Matching findings' : 'Select a finding to investigate'}}</p>
+        <div class="finding-list">
+          <button class="finding-row" *ngFor="let finding of visibleFindings" [class.selected]="selected?.id === finding.id" [attr.aria-current]="selected?.id === finding.id ? 'true' : null" (click)="selectFinding(finding)">
+            <span class="finding-topline"><span class="resource-kind"><fa-icon [icon]="icons.cube"></fa-icon> {{finding.kind}}</span><span class="attention-dot" aria-hidden="true"></span></span>
+            <strong>{{finding.name}}</strong><span class="finding-title">{{finding.title}}</span>
+            <span class="finding-bottomline">Needs investigation <fa-icon [icon]="icons.chevron"></fa-icon></span>
+          </button>
+          <div class="list-empty" *ngIf="visibleFindings.length === 0">
+            <fa-icon [icon]="loading ? icons.spinner : icons.search" [spin]="loading"></fa-icon>
+            <p>{{loading ? 'Collecting findings…' : checked && findings.length ? 'No matching findings' : checked ? 'No findings returned' : 'Waiting for results'}}</p>
+            <button class="text-button" *ngIf="query || activeFilterCount" (click)="clearFilters()">Clear search and filters</button>
+          </div>
+        </div>
+        <div class="list-footer"><span class="status-dot"></span> Source: Theliv diagnostic checks</div>
+      </aside>
+
+      <article class="investigation-panel" aria-label="Investigation details">
+        <ng-container *ngIf="selected as finding; else noSelection">
+          <header class="investigation-header">
+            <div class="detail-topline"><span class="eyebrow">Finding / {{finding.kind}}</span><span class="status-badge"><fa-icon [icon]="icons.warning"></fa-icon> Needs investigation</span></div>
+            <h2>{{finding.title}}</h2>
+            <div class="detail-subline"><code>{{finding.name}}</code><span *ngIf="finding.firstObserved">Observed {{finding.firstObserved | date:'medium'}}</span></div>
+            <div class="detail-actions"><button class="button primary" (click)="selectTab('evidence')">View evidence <fa-icon [icon]="icons.arrow"></fa-icon></button>
+              <button class="button secondary" (click)="copyLink()"><fa-icon [icon]="icons.copy"></fa-icon> Copy link</button></div>
+          </header>
+          <nav class="detail-tabs" aria-label="Investigation sections">
+            <button [class.active]="tab === 'overview'" [attr.aria-current]="tab === 'overview' ? 'page' : null" (click)="selectTab('overview')">Overview</button>
+            <button [class.active]="tab === 'evidence'" [attr.aria-current]="tab === 'evidence' ? 'page' : null" (click)="allEvents = false; selectTab('evidence')">Evidence <span class="count">{{matchingEvents.length}}</span></button>
+            <button [class.active]="tab === 'resources'" [attr.aria-current]="tab === 'resources' ? 'page' : null" (click)="selectTab('resources')">Resources <span class="count">{{finding.resources.length}}</span></button>
+          </nav>
+          <div class="detail-body" *ngIf="tab === 'overview'">
+            <div class="overview-grid">
+              <div class="investigation-story">
+                <section class="story-section"><span class="step-number">01</span><div><h3>What we observed</h3><p>{{finding.observed}}</p><span class="signal-label">{{finding.reason}}</span></div></section>
+                <section class="story-section"><span class="step-number">02</span><div><h3>Cause needs verification</h3><p>The diagnostic signal identifies a symptom. Use the evidence to confirm the underlying cause.</p>
+                  <details *ngIf="finding.explanation" class="detector-note"><summary>Detector explanation</summary><p>{{finding.explanation}}</p></details></div></section>
+                <section class="story-section"><span class="step-number">03</span><div><h3>What to check next</h3><p>{{finding.nextCheck}}</p>
+                  <button class="text-button" (click)="allEvents = false; selectTab('evidence')">Inspect related events <fa-icon [icon]="icons.arrow"></fa-icon></button></div></section>
+              </div>
+              <aside class="context-card" aria-label="Finding context"><p class="eyebrow">At a glance</p>
+                <dl><div><dt>Resource</dt><dd>{{finding.kind}}<br><code>{{finding.name}}</code></dd></div>
+                  <div *ngIf="finding.tags.container"><dt>Container</dt><dd><code>{{finding.tags.container}}</code></dd></div>
+                  <div *ngIf="finding.tags.image"><dt>Image</dt><dd><code>{{finding.tags.image}}</code></dd></div>
+                  <div><dt>Evidence</dt><dd>{{loadingEvents ? 'Loading events…' : eventsError ? 'Events unavailable' : matchingEvents.length + ' related events'}}</dd></div>
+                </dl><button class="text-button" (click)="selectTab('resources')">Explore resources <fa-icon [icon]="icons.arrow"></fa-icon></button>
+              </aside>
             </div>
-            <div *ngIf="selectedNs" class="search item">
-                <span>{{selectedNs}}</span>
-                <fa-icon class="close-icon" [icon]="faTimes" (click)="selectedNs=''"></fa-icon>
-            </div>
+            <section class="recommendations"><div class="section-heading"><div><p class="eyebrow">Next steps</p><h3>Recommendations</h3></div><span class="source-label">From diagnostic checks</span></div>
+              <ol *ngIf="finding.recommendations.length"><li *ngFor="let recommendation of finding.recommendations">{{recommendation}}</li></ol>
+              <p class="muted" *ngIf="!finding.recommendations.length">This check did not return a specific fix. Start with the evidence and suggested checks above.</p>
+              <details class="commands" *ngIf="finding.commands.length"><summary><fa-icon [icon]="icons.terminal"></fa-icon> Suggested commands <span class="count">{{finding.commands.length}}</span></summary>
+                <p class="muted">Commands use your terminal’s Kubernetes context. Confirm it matches {{cluster}} and review each command’s effect before running it.</p>
+                <div class="command" *ngFor="let command of finding.commands; let index = index"><pre><code>{{command}}</code></pre><button class="icon-button" (click)="copy(command, 'Command')" [attr.aria-label]="'Copy command ' + (index + 1)"><fa-icon [icon]="icons.copy"></fa-icon></button></div>
+              </details>
+            </section>
+            <details class="technical-details"><summary>Technical details <span class="count">{{metadataEntries(finding).length}}</span></summary>
+              <dl class="metadata-list"><div *ngFor="let item of metadataEntries(finding)"><dt>{{item.key}}</dt><dd><code>{{item.value}}</code></dd></div></dl>
+              <p class="muted" *ngIf="!metadataEntries(finding).length">No additional labels returned.</p>
+            </details>
+          </div>
+          <div class="detail-body" *ngIf="tab === 'resources'">
+            <div class="section-heading"><div><p class="eyebrow">Resource context</p><h3>Resources in this finding</h3></div><span class="source-label">{{finding.resources.length}} resources</span></div>
+            <p class="muted">Inspect the objects returned by the diagnostic check.</p>
+            <details class="resource-item" *ngFor="let resource of finding.resources"><summary><span class="resource-symbol"><fa-icon [icon]="icons.cube"></fa-icon></span><span><span class="resource-kind">{{resource.type}}</span><strong>{{resource.name}}</strong></span></summary>
+              <div class="resource-content"><p *ngIf="resource.issue?.description">{{resource.issue?.description}}</p>
+                <p class="muted">Resource snapshot from the last successful check.</p><pre>{{resource.metadata || resource | json}}</pre>
+              </div></details>
+            <p class="muted" *ngIf="!finding.resources.length">This check did not include resource snapshots. Refer to its labels and events.</p>
+          </div>
+        </ng-container>
+        <ng-template #noSelection>
+          <div class="empty-detail" *ngIf="tab !== 'evidence'">
+            <div class="welcome-symbol"><fa-icon [icon]="loading ? icons.spinner : detectionError ? icons.warning : checked && !findings.length ? icons.check : icons.search" [spin]="loading"></fa-icon></div>
+            <h2>{{loading ? 'Checking your namespace' : detectionError ? 'Checks could not complete' : !checked ? 'Waiting for diagnostic results' : !findings.length ? 'No findings returned' : !visibleFindings.length ? 'No matching findings' : 'Finding no longer in these results'}}</h2>
+            <p>{{loading ? 'Collecting diagnostic results and Kubernetes events.' : detectionError ? 'Retry the checks to get a current view of this namespace.' : !checked ? 'Select a scope and run the checks to begin.' : !findings.length ? 'The configured checks returned no findings for this namespace. This does not verify every aspect of cluster health.' : !visibleFindings.length ? 'Try another search or clear your filters.' : 'The shared finding may have changed or disappeared. Select another finding to continue.'}}</p>
+            <button class="button secondary" *ngIf="!loading && detectionError" (click)="refresh()">Retry checks</button>
+            <button class="button secondary" *ngIf="!loading && (query || activeFilterCount)" (click)="clearFilters()">Clear search and filters</button>
+            <button class="button secondary" *ngIf="!loading && visibleFindings.length && !selected" (click)="showFirstFinding()">View available finding</button>
+            <button class="text-button" *ngIf="checked && !loading" (click)="allEvents = true; selectTab('evidence')">View namespace events <fa-icon [icon]="icons.arrow"></fa-icon></button>
+          </div>
+        </ng-template>
+        <div class="detail-body" *ngIf="tab === 'evidence'">
+          <div class="section-heading"><div><p class="eyebrow">Kubernetes events</p><h3>{{allEvents || !selected ? 'Namespace evidence' : 'Related evidence'}}</h3></div>
+            <button class="text-button" *ngIf="selected" (click)="allEvents = !allEvents">{{allEvents ? 'Show related events' : 'Show all namespace events'}}</button></div>
+          <p class="muted">{{allEvents || !selected ? 'All events returned for this namespace.' : 'Events matched to this finding’s workload and resource names.'}} Newest first.
+            <span *ngIf="eventsChecked"> Fetched {{eventsChecked | date:'HH:mm:ss'}}.</span></p>
+          <p class="inline-state" *ngIf="loadingEvents" role="status"><fa-icon [icon]="icons.spinner" [spin]="true"></fa-icon> Loading Kubernetes events…</p>
+          <div class="event-list">
+            <section class="event-item" *ngFor="let event of displayedEvents" [class.warning-event]="event.Type !== 'Normal'">
+              <span class="event-marker"><fa-icon [icon]="event.Type === 'Normal' ? icons.check : icons.warning"></fa-icon></span>
+              <div class="event-content"><div class="event-topline"><h4>{{event.Reason || 'Kubernetes event'}}</h4><span class="event-type">{{event.Type || 'Event'}}</span><time>{{eventTime(event) ? (eventTime(event) | date:'MMM d, HH:mm:ss') : 'Time unavailable'}}</time></div>
+                <p>{{event.Message || 'No event message provided.'}}</p><code>{{eventObject(event)}}</code></div>
+            </section>
+          </div>
+          <div class="inline-state" *ngIf="!loadingEvents && !displayedEvents.length">
+            <h3>{{eventsError ? 'Events unavailable' : 'No events returned'}}</h3><p>{{eventsError ? 'Retry loading events to complete the evidence.' : 'Events may have expired, or no events were recorded for these resources.'}}</p>
+            <button class="button secondary" *ngIf="eventsError" (click)="refreshEvents()">Retry events</button>
+            <button class="text-button" *ngIf="selected && !allEvents && !eventsError" (click)="allEvents = true">View all namespace events</button>
+          </div>
         </div>
+        <footer class="detail-footer"><span><span class="status-dot"></span> {{loading ? 'Checking scope…' : detectionError || eventsError ? 'Some data unavailable' : checked ? 'Diagnostic results' : 'Awaiting checks'}}</span><span>Changes are not applied from this workspace</span></footer>
+      </article>
     </div>
-
-    <div class="search-cluster">
-        <img class="search-icon" src="assets/images/kube/cluster.svg" />
-        <mat-form-field class="fit-width">
-            <input type="text" matInput [formControl]="clusterFormControl" [matAutocomplete]="auto" (input)="checkClusterBlank()" [(ngModel)]="selectedClusters" placeholder="Select a Cluster">
-            <mat-autocomplete autoActiveFirstOption #auto="matAutocomplete" (optionSelected)="getNSByCluster()">
-                <mat-option *ngFor="let option of clusterOptions | async" [value]="option">
-                    {{option}}
-                </mat-option>
-            </mat-autocomplete>
-        </mat-form-field>
-    </div>
-    
-    <div class="search-namespace">
-        <img class="search-icon" src="assets/images/kube/ns.png" />
-        <fa-icon class="fa-spin" *ngIf="selectedClusters && !clusterInputing && namespaces && namespaces.length === 0" [icon]="faSpinner"></fa-icon>
-        <mat-form-field class="fit-width">
-            <mat-label>Select a Namespace</mat-label>
-            <mat-select [(value)]="selectedNs" (selectionChange)="getSelectedQuery($event)">
-                <mat-option *ngFor="let namespace of namespaces" [value]="namespace.value">
-                    {{namespace.text}}
-                </mat-option>
-            </mat-select>
-        </mat-form-field>
-    </div>
-
-    <!-- <button class="search-button" [disabled]="selectedNs==='' || selectedClusters===''" (click)="getKubeResourceInfo()">Diagnosis</button> -->
-</div>
-
-<div class="main-container">
-    <div class="search-type">
-        <!-- <button (click)="openFeedbackDialog()"><fa-icon [icon]="faPencialAlt" style="margin: 0 5px;"></fa-icon>Feedback</button> -->
-        <div class="video-container" *ngIf="configInfo && configInfo.videoLink" >
-            <a target="_blank"[href]="configInfo.videoLink">
-                <fa-icon  [icon]="faVideo" title="Click here for a 1 min introduction on Theliv"></fa-icon>
-                <div class="video-msg">1 min introduction</div>
-            </a>
-        </div>
-        <div class="resource-filter" *ngIf="resourceTypes">
-            <div class="resource-filter-title">Type of resource</div>
-            <div class="resource-wrapper">
-                <div class="type-container" *ngFor="let type of resourceTypes">
-                    <input type="checkbox" id="{{type.name.toLowerCase()}}" class="resource-style" [value]="type.name"
-                    [(ngModel)]="type.isChecked" (change)="changeSelection($event, 'type')">
-                    <label for="{{type.name.toLowerCase()}}">{{type.name}}</label>
-                    <span class="resource-number">{{type.count}}</span>
-                </div>
-            </div>
-        </div>
-        <div class="resource-filter" *ngIf="resourceNames">
-            <div class="resource-filter-title">Resource Name</div>
-            <div class="resource-wrapper">
-                <div class="type-container" *ngFor="let issue of resourceNames">
-                    <input type="checkbox" id="{{issue.name.toLowerCase()}}" class="resource-style" [value]="issue.name"
-                    [(ngModel)]="issue.isChecked" (change)="changeSelection($event, 'name')">
-                    <label for="{{issue.name.toLowerCase()}}">{{issue.name}}</label>
-                    <span class="resource-number">{{issue.count}}</span>
-                </div>
-            </div>
-        </div>
-        <div class="resource-filter" *ngIf="proDomains">
-            <div class="resource-filter-title">Problem Domain</div>
-            <div class="resource-wrapper">
-                <div class="type-container" *ngFor="let issue of proDomains">
-                    <input type="checkbox" id="{{issue.name.toLowerCase()}}" class="resource-style" [value]="issue.name"
-                    [(ngModel)]="issue.isChecked" (change)="changeSelection($event, 'domain')">
-                    <label for="{{issue.name.toLowerCase()}}">{{issue.name}}</label>
-                    <span class="resource-number">{{issue.count}}</span>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div *ngIf="loading" class="loading">
-        <fa-icon class="fa-spin" [icon]="faSpinner"></fa-icon>
-    </div>
-
-    <div *ngIf="resourceGroups && resourceGroups.length === 0 && selectedClusters && selectedNs && !loading" class="searched-resources">
-        <div class="searched-bar">
-            <div class="searched-show">
-                <div class="searched-cluster">Cluster: {{selectedClusters}}</div> <div class="searched-namespace">Namespace: {{selectedNs}}</div></div>
-            <div><button class="events-button" *ngIf="events && hasFailedEvents && events.length>0" (click)="showEvents()">Show <span class="events-alert">{{events.length}}</span> Events</button></div>
-        </div>
-        <div *ngIf="selectedClusters && selectedNs && !loading" class="searched-content">
-            <ul class="process">
-                <li *ngIf="count===0" class="process__item">
-                    <span class="process__title">No Issue(s) Detected!</span>
-                    <span class="process__subtitle"><fa-icon [icon]="faCheck"></fa-icon>You are good to go</span>
-                </li>
-            </ul>
-        </div>
-    </div>
-
-    <div *ngIf="resourceGroups && resourceGroups.length >0 && !loading" class="searched-resources">
-        <div class="searched-bar">
-            <div class="searched-show">Cluster: {{selectedClusters}} | Namespace: {{selectedNs}}</div>
-            <div><button class="events-button" *ngIf="events && hasFailedEvents && events.length>0" (click)="showEvents()">Show <span class="events-alert">{{events.length}}</span> Events</button></div>
-        </div>
-        <div class="searched-content">
-            <ul class="process">
-                <li *ngIf="count>0" class="process__item" [class.issue]="count>0">
-                  <span class="process__title">{{count}} Issue(s) found</span>
-                </li>
-            </ul>
-        </div>
-
-        <div class="resource-card-container">
-            <router-outlet></router-outlet>
-        </div>
-    </div>
-</div>
-
-<div *ngIf="gridToggle && events"  class="overlay">
-    <div class="popup">
-        <h2>Events</h2>
-        <a class="close" (click)="close()">&times;</a>
-        <div class="content">
-            <div class="grid-view-item header">
-                <div class="item-block type" (click)="isAsc=!isAsc; active='type'; sortData('type')">Type 
-                    <fa-icon *ngIf="active=='type' && !isAsc" class="down-icon" [icon]="faAngleDown"></fa-icon>
-                    <fa-icon *ngIf="active=='type' && isAsc" class="up-icon" [icon]="faAngleUp"></fa-icon>
-                </div>
-                <div class="item-block resource" (click)="isAsc=!isAsc; active='resource'; sortData('resource')">Resource 
-                    <fa-icon *ngIf="active=='resource' && !isAsc" class="down-icon" [icon]="faAngleDown"></fa-icon>
-                    <fa-icon *ngIf="active=='resource' && isAsc" class="up-icon" [icon]="faAngleUp"></fa-icon>
-                </div>
-                <div class="item-block kind" (click)=" isAsc=!isAsc; active='kind'; sortData('kind')">Resource Kind 
-                    <fa-icon *ngIf="active=='kind' && !isAsc" class="down-icon" [icon]="faAngleDown"></fa-icon>
-                    <fa-icon *ngIf="active=='kind' && isAsc" class="up-icon" [icon]="faAngleUp"></fa-icon>
-                </div>
-                <div class="item-block reason" (click)="isAsc=!isAsc; active='reason'; sortData('reason')">Reason 
-                    <fa-icon *ngIf="active=='reason' && !isAsc" class="down-icon" [icon]="faAngleDown"></fa-icon>
-                    <fa-icon *ngIf="active=='reason' && isAsc" class="up-icon" [icon]="faAngleUp"></fa-icon>
-                </div>
-                <div class="item-block message">Message</div>
-                <div class="item-block time" (click)="isAsc=!isAsc; active='time'; sortData('time')">Time 
-                    <fa-icon *ngIf="active=='time' && !isAsc" class="down-icon" [icon]="faAngleDown"></fa-icon>
-                    <fa-icon *ngIf="active=='time' && isAsc" class="up-icon" [icon]="faAngleUp"></fa-icon>
-                </div>
-            </div>
-            <div class="grid-view-items-container">
-                <div class="grid-view-item" *ngFor="let event of events">
-                    <div class="item-block type" [ngClass]="{warning: event.Type==='Warning', failed: event.Type!=='Normal' && event.Type !=='Warning'}">{{event.Type}}</div>
-                    <div class="item-block resource">{{event.InvolvedObject.name}}</div>
-                    <div class="item-block kind">{{event.InvolvedObject.Kind}}</div>
-                    <div class="item-block reason">{{event.Reason}}</div>
-                    <div class="item-block message">{{event.Message}}</div>
-                    <div class="item-block time">{{event.DateHappened.replace("T", " ").replace("+", " +")}}</div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+  </ng-container>
+  <p class="copy-status" [class.visible]="!!copyStatus" role="status" aria-live="polite">{{copyStatus}}</p>
+</main>

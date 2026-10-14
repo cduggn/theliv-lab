@@ -1,428 +1,247 @@
-/*
- * Copyright FMR LLC <opensource@fidelity.com>
- *
+/* Copyright FMR LLC <opensource@fidelity.com>
  * SPDX-License-Identifier: Apache
  */
-import { Component, OnInit } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Component, OnDestroy, OnInit } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
-import { faSearch, faTimes, faSpinner, faBell, faCheck, faPencilAlt, faAngleDown, faAngleUp, faVideo} from '@fortawesome/free-solid-svg-icons';
+import { combineLatest, Subscription } from 'rxjs';
+import { timeout } from 'rxjs/operators';
+import { faArrowRight, faCheck, faChevronRight, faCircleNotch, faCopy, faCube,
+  faExclamationTriangle, faFilter, faSearch, faSyncAlt, faTerminal, faTimes } from '@fortawesome/free-solid-svg-icons';
 import { KubernetesService } from '../services/kubernetes.service';
-import { map, startWith } from 'rxjs/operators';
-import { FormControl } from '@angular/forms';
-import { MatDialog } from '@angular/material/dialog';
-import { UserFeedbackComponent } from '../components/user-feedback/user-feedback.component';
-
-export interface NamespaceOption {
-  text: string
-  value: string
-}
+import { DiagnosticReport, Investigation, KubeEvent, matchesFinding, relatedEvents,
+  toInvestigation, validTimestamp } from './investigation';
+type DetailTab = 'overview' | 'evidence' | 'resources';
 
 @Component({
   selector: 'app-kube-platform',
   templateUrl: './kube-platform.component.html',
   styleUrls: ['./kube-platform.component.scss']
 })
-export class KubePlatformComponent implements OnInit {
-  faSearch = faSearch;
-  faTimes = faTimes;
-  faSpinner = faSpinner;
-  faBell = faBell;
-  faCheck = faCheck;
-  faPencialAlt = faPencilAlt;
-  faAngleDown = faAngleDown;
-  faAngleUp = faAngleUp;
-  faVideo = faVideo;
+export class KubePlatformComponent implements OnInit, OnDestroy {
+  icons = { search: faSearch, refresh: faSyncAlt, filter: faFilter, arrow: faArrowRight,
+    chevron: faChevronRight, cube: faCube, warning: faExclamationTriangle, check: faCheck,
+    spinner: faCircleNotch, copy: faCopy, terminal: faTerminal, close: faTimes };
+  clusters: string[] = [];
+  namespaces: string[] = [];
+  cluster = '';
+  namespace = '';
+  query = '';
+  kindFilter = '';
+  reasonFilter = '';
+  nameFilter = '';
+  filtersOpen = false;
+  loadingClusters = false;
+  loadingNamespaces = false;
   loading = false;
-  public resourceTypes: any;
-  public proDomains: any;
-  public resourceNames: any;
-  public senLevels: any;
-  public resourceStatus: any;
-  resourceGroups: any;
-  allResources: any;
-  typeFilter: any[] = [];
-  nameFilter: any[] = [];
-  domainFilter: any[] = [];
-  isGroupContent = false;
-  count = -1;
-  sortBy = 'time';
-  now = new Date();
+  loadingEvents = false;
+  checked = false;
+  clusterError = '';
+  namespaceError = '';
+  detectionError = '';
+  eventsError = '';
+  lastChecked: Date | null = null;
+  eventsChecked: Date | null = null;
+  findings: Investigation[] = [];
+  events: KubeEvent[] = [];
+  selectedId = '';
+  tab: DetailTab = 'overview';
+  allEvents = false;
+  copyStatus = '';
+  private scope = '';
+  private subscriptions = new Subscription();
+  private namespaceRequest = new Subscription();
+  private detectionRequest = new Subscription();
+  private eventRequest = new Subscription();
+  private clusterRequest = new Subscription();
+  private copyTimer?: ReturnType<typeof setTimeout>;
 
-  type: any;
-  selectedNs = '';
-  selectedClusters = '';
-  selectedType = '';
-  selectedName = '';
-  //namespaces: any;
-  clusters: any;
-
-  clusterFormControl = new FormControl();
-  clusterOptions: Observable<string[]> | undefined;
-  namespaces: NamespaceOption[] = []
-  clusterInputing = false
-
-  events: any;
-  hasFailedEvents=false;
-  sortedData: any;
-  isAsc=false;
-  active='time';
-  feedback = '';
-  gridToggle = false;
-  configInfo: any;
-
-  constructor(
-    private kubeService: KubernetesService,
-    private route: ActivatedRoute,
-    private router: Router, 
-    private dialog: MatDialog) { }
+  constructor(private kubeService: KubernetesService, private route: ActivatedRoute, private router: Router) {}
 
   ngOnInit(): void {
-    this.resourceGroups = null;
-    // this.router.routeReuseStrategy.shouldReuseRoute = () => false;
-    this.kubeService.getClusters().subscribe((res: any) => {
-      if (res) {
-        this.clusters = res;
-        this.clusterOptions = this.clusterFormControl.valueChanges.pipe(
-          startWith(''),
-          map(value => {
-            const filterValue = value.toLowerCase();
-            return this.clusters.filter((option: string) =>  
-              option.toLowerCase().indexOf(filterValue) >= 0 
-            );
-          })
-        );
-      }
-    }, (err: any) => {
-      console.log('Get Clusters Information Error: ', err);
-    });
+    this.subscriptions.add(combineLatest([this.route.queryParamMap, this.route.paramMap]).subscribe(([query, path]) => {
+      const cluster = query.get('cluster') || '';
+      const namespace = query.get('namespace') || '';
+      this.selectedId = query.get('finding') || path.get('id') || '';
+      const requestedTab = query.get('tab');
+      this.tab = requestedTab === 'evidence' || requestedTab === 'resources' ? requestedTab : 'overview';
+      this.query = query.get('q') || '';
+      this.kindFilter = query.get('type') || '';
+      this.reasonFilter = query.get('reason') || '';
+      this.nameFilter = query.get('name') || '';
+      this.filtersOpen = this.filtersOpen || !!(this.kindFilter || this.reasonFilter || this.nameFilter);
+      const scope = JSON.stringify([cluster, namespace]);
+      if (scope === this.scope) { return; }
+      const clusterChanged = cluster !== this.cluster;
+      this.scope = scope;
+      this.cluster = cluster;
+      this.namespace = namespace;
+      this.clearResults();
+      if (clusterChanged) { this.loadNamespaces(); }
+      if (cluster && namespace) { this.refresh(); }
+    }));
+    this.loadClusters();
+  }
+  ngOnDestroy(): void {
+    this.subscriptions.unsubscribe();
+    this.clusterRequest.unsubscribe();
+    this.namespaceRequest.unsubscribe();
+    this.detectionRequest.unsubscribe();
+    this.eventRequest.unsubscribe();
+    if (this.copyTimer) { clearTimeout(this.copyTimer); }
+  }
+  get visibleFindings(): Investigation[] {
+    return this.findings.filter(finding => matchesFinding(finding, this.query, this.kindFilter, this.reasonFilter, this.nameFilter));
+  }
+  get selected(): Investigation | undefined {
+    return this.selectedId ? this.visibleFindings.find(finding => finding.id === this.selectedId) : this.visibleFindings[0];
+  }
+  get kinds(): string[] { return Array.from(new Set(this.findings.map(finding => finding.kind))).sort(); }
+  get reasons(): string[] { return Array.from(new Set(this.findings.map(finding => finding.reason))).sort(); }
+  get activeFilterCount(): number { return [this.kindFilter, this.reasonFilter, this.nameFilter].filter(Boolean).length; }
+  get matchingEvents(): KubeEvent[] { return this.selected ? relatedEvents(this.events, this.selected, this.namespace) : []; }
+  get displayedEvents(): KubeEvent[] { return this.allEvents || !this.selected ? this.events : this.matchingEvents; }
+  get busy(): boolean { return this.loading || this.loadingEvents; }
 
-    this.route.queryParamMap.subscribe((params: any) => {
-      this.resourceGroups = [];
-      if (params.get('cluster')) {
-        this.selectedClusters = params.get('cluster')
-      }
-      this.kubeService.selectedClusters$.next(this.selectedClusters);
-
-      if (params.get('namespace')) {
-        this.selectedNs = params.get('namespace');
-      }
-      if (params.get('type')) {
-        this.selectedType = params.get('type').charAt(0).toUpperCase() + params.get('type').slice(1);
-      }
-      if (params.get('name')) {
-        this.selectedName = params.get('name');
-      }
-      this.kubeService.selectedNs$.next(this.selectedNs);
-
-      this.getNamespaces()
-      if (this.selectedClusters && this.selectedNs) {
-        this.getKubeResourceInfo();
-        this.getEvents();
-      }
-    });
-
-    this.kubeService.getConfigInfo().subscribe((res: any) => {
-      if (res) {
-        this.configInfo = res;
-      }
-    }, (err: any) => {
-      console.log('Get Config Information Error: ', err);
+  loadClusters(): void {
+    this.clusterRequest.unsubscribe();
+    this.loadingClusters = true;
+    this.clusterError = '';
+    this.clusterRequest = this.kubeService.getClusters().pipe(timeout(45000)).subscribe((data: string[]) => {
+      this.clusters = Array.isArray(data) ? data : [];
+      this.loadingClusters = false;
+      if (!this.cluster && this.clusters.length === 1) { this.changeCluster(this.clusters[0]); }
+    }, error => {
+      this.loadingClusters = false;
+      this.clusterError = this.errorMessage(error, 'Cluster list');
     });
   }
-
-  getKubeResourceInfo(): void {
+  loadNamespaces(): void {
+    this.namespaceRequest.unsubscribe();
+    this.namespaces = [];
+    this.namespaceError = '';
+    this.loadingNamespaces = !!this.cluster;
+    if (!this.cluster) { return; }
+    this.namespaceRequest = this.kubeService.getAllNamespaces(this.cluster).pipe(timeout(45000)).subscribe((data: string[]) => {
+      this.namespaces = Array.isArray(data) ? data : [];
+      this.loadingNamespaces = false;
+    }, error => {
+      this.loadingNamespaces = false;
+      this.namespaceError = this.errorMessage(error, 'Namespace list');
+    });
+  }
+  changeCluster(cluster: string): void {
+    this.router.navigate(['/kubernetes/overview'], { queryParams: { cluster: cluster || null } });
+  }
+  changeNamespace(namespace: string): void {
+    this.router.navigate(['/kubernetes/overview'], { queryParams: { cluster: this.cluster, namespace: namespace || null } });
+  }
+  private clearResults(): void {
+    this.detectionRequest.unsubscribe();
+    this.eventRequest.unsubscribe();
+    this.findings = [];
+    this.events = [];
+    this.lastChecked = null;
+    this.eventsChecked = null;
+    this.checked = false;
+    this.loading = false;
+    this.loadingEvents = false;
+    this.detectionError = '';
+    this.eventsError = '';
+    this.allEvents = false;
+    this.copyStatus = '';
+  }
+  refresh(): void {
+    if (!this.cluster || !this.namespace) { return; }
+    this.detectionRequest.unsubscribe();
     this.loading = true;
-    this.nameFilter = [];
-    this.typeFilter = [];
-    this.domainFilter = [];
-    this.kubeService.getDetects(this.selectedClusters, this.selectedNs).subscribe(
-      (res: any) => {
-        if (res) {
-          this.resourceGroups = res;
-          this.allResources = res;
-          this.kubeService.resourceList$.next(this.resourceGroups);
-          this.isGroupContent = true;
-          this.count = res.length;
-          this.loading = false;
-          this.getProblemNameFilter()
-          this.getResourceTypeFilter()
-          this.getProblemDomainFilter()
-          this.filterByQuery()
-        }
-      },
-      (err: any) => {
-        console.log('Get Kube Information Error: ', err);
+    this.detectionError = '';
+    this.detectionRequest = this.kubeService.getDetects(this.cluster, this.namespace).pipe(timeout(45000))
+      .subscribe((data: DiagnosticReport[]) => {
+      if (data != null && !Array.isArray(data)) {
+        this.loading = false;
+        this.detectionError = 'Diagnostic results could not be read. Try checking again.';
+        return;
       }
-    );
-  }
-
-  getResourceTypeFilter(): void {
-    var list: any[] = [];
-    this.allResources.forEach((r: any) => {
-      if (!list.find((item: any) => item.name === r.topResourceType)) {
-        var n = r.topResourceType;
-        var c = 1;
-        var check = false;
-        if (n == this.selectedType) {
-          check = true;
-          this.typeFilter.push(n)
-        }
-        var resource = {name: n, count: c, isChecked: check}
-        list.push(resource)
-      } else{
-        var obj = list.find((item: any) => item.name === r.topResourceType)
-        obj.count = obj.count + 1;
-      }
+      this.findings = (data || []).map(toInvestigation);
+      this.lastChecked = new Date();
+      this.checked = true;
+      this.loading = false;
+    }, error => {
+      this.loading = false;
+      this.detectionError = this.errorMessage(error, 'Diagnostic checks');
     });
-    var totalCount = 0;
-    list.forEach((item: any)=>{
-      totalCount = totalCount+ item.count;
-    })
-    list.push({name: 'All Types', count: totalCount})
-    console.log(list);
-    this.resourceTypes = list;
+    this.refreshEvents();
   }
-
-  getProblemDomainFilter(): void {
-    var list: any[] = [];
-    this.allResources.forEach((r: any) => {
-      if (!list.find((item: any) => item.name === r.rootCause.name)) {
-        var n = r.rootCause.name;
-        var c = 1;
-        var resource = {name: n, count: c}
-        list.push(resource)
-      } else{
-        var obj = list.find((item: any) => item.name === r.rootCause.name)
-        obj.count = obj.count + 1;
+  refreshEvents(): void {
+    if (!this.cluster || !this.namespace) { return; }
+    this.eventRequest.unsubscribe();
+    this.eventsError = '';
+    this.loadingEvents = true;
+    this.eventRequest = this.kubeService.getKubeEvents(this.cluster, this.namespace).pipe(timeout(45000)).subscribe((data: KubeEvent[]) => {
+      this.loadingEvents = false;
+      if (data != null && !Array.isArray(data)) {
+        this.eventsError = 'Event results could not be read. Try loading them again.';
+        return;
       }
-    });
-    var totalCount = 0;
-    list.forEach((item: any)=>{
-      totalCount = totalCount+ item.count;
-    })
-    list.push({name: 'All Domains', count: totalCount })
-    console.log(list);
-    this.proDomains = list;
-  }
-
-  getProblemNameFilter(): void {
-    var list: any[] = [];
-    this.allResources.forEach((r: any) => {
-      if (!list.find((item: any) => item.name === r.name)) {
-        var n = r.name;
-        var c = 1;
-        var check = false;
-        if (n == this.selectedName) {
-          this.nameFilter.push(n);
-          check = true;
-        }
-        var resource = {name: n, count: c, isChecked: check}
-        list.push(resource)
-      } else{
-        var obj = list.find((item: any) => item.name === r.name)
-        obj.count = obj.count + 1;
-      }
-    });
-    var totalCount = 0;
-    list.forEach((item: any)=>{
-      totalCount = totalCount+ item.count;
-    })
-    list.push({name: 'All', count: totalCount })
-    this.resourceNames = list;
-  }
-
-  filterByQuery(): void {
-    if (this.selectedType) {
-      this.resourceTypes.forEach((r: any) => {
-        if (r.name == this.selectedType) {
-          this.resourceGroups = this.resourceGroups.filter((r: any) => r.topResourceType == this.selectedType)
-        }
-      })
-    }
-    this.selectedType = ''
-    if (this.selectedName) {
-      this.resourceNames.forEach((r: any) => {
-        if (r.name == this.selectedName) {
-          this.resourceGroups = this.resourceGroups.filter((r: any) => r.name == this.selectedName)
-        }
-      })
-    }
-    this.selectedName = ''
-    this.kubeService.resourceList$.next(this.resourceGroups);
-  }
-
-  filter: any[] = [];
-  changeSelection(e: any, cat: string): void {
-    if (e.target.checked && e.target.value) {
-      console.log('checked: ', e.target.value);
-      switch (cat) {
-        case 'type':
-          this.typeFilter.push(e.target.value);
-          break;
-        case 'domain':
-          this.domainFilter.push(e.target.value);
-          break;
-        case 'name':
-          this.nameFilter.push(e.target.value);
-          break;
-        default:
-          break;
-      }
-    } else if (!e.target.checked && e.target.value) {
-      switch (cat) {
-        case 'type':
-          this.typeFilter.splice(this.typeFilter.findIndex((element) => element == e.target.value), 1);
-          break;
-        case 'domain':
-          this.domainFilter.splice(this.domainFilter.findIndex((element) => element == e.target.value), 1);
-          break;
-        case 'name':
-          this.nameFilter.splice(this.nameFilter.findIndex((element) => element == e.target.value), 1);
-          break;
-        default:
-          break;
-        }
-    }
-    this.filterResource();
-    this.kubeService.resourceList$.next(this.resourceGroups);
-    // else if (this.type.indexOf(e.target.value) > -1) {
-    //   const index = this.type.indexOf(e.target.value, 0);
-    //   this.type.splice(index, 1);
-    // }
-  }
-
-  filterResource(): void {
-    var resultList: any;
-    resultList=this.allResources;
-    if (this.nameFilter.length > 0 && !this.nameFilter.includes("All")) {
-      resultList=resultList.filter((r: any) => this.nameFilter.includes(r.name));
-    }
-    if (this.typeFilter.length > 0 && !this.typeFilter.includes("All Types")) {
-      resultList=resultList.filter((r: any) =>  this.typeFilter.includes(r.topResourceType))
-    }
-    if (this.domainFilter.length > 0 && !this.domainFilter.includes("All Domains")) {
-      resultList=resultList.filter((r: any) =>  this.domainFilter.includes(r.rootCause.name))
-    }
-    this.resourceGroups = resultList;
-  }
-
-  checkClusterBlank(){
-    this.clusterInputing = true
-    if (this.selectedClusters == '') {
-      this.selectedNs = ''
-      this.selectedType = ''
-      this.selectedName = ''
-      this.namespaces = []
-      this.resourceGroups = []
-      this.resourceTypes = []
-      this.proDomains = []
-      this.resourceNames = []
-      this.typeFilter = []
-      this.nameFilter = []
-      this.domainFilter = []
-      this.events = []
-    }
-  }
-
-  getNSByCluster(): void {
-    this.clusterInputing = false
-    this.router.navigate(['kubernetes'], { queryParams: { cluster: this.selectedClusters } });
-    // this.resourceGroups = [];
-    // this.selectedNs = '';
-    // this.kubeService.selectedNs$.next(this.selectedNs);
-    // this.kubeService.resourceList$.next(this.resourceGroups);
-    // this.getNamespaces()
-  }
-
-  getNamespaces(): void {
-    if (this.selectedClusters) {
-      this.kubeService.getAllNamespaces(this.selectedClusters).subscribe(
-        (res: any) => {
-          if (res) {
-            this.namespaces = []
-            res.forEach((ele: string) => {
-              this.namespaces.push({text: ele, value: ele})
-            });
-          }
-        },
-        (err: any) => {
-          console.log(`Get Namespace in Cluster ${this.selectedClusters} Error: `, err);
-        }
-      );
-    }
-  }
-
-  getSelectedQuery(e: any): void {
-    this.router.navigate(['kubernetes'], { queryParams: { cluster: this.selectedClusters, namespace: e.value } });
-    // this.resourceGroups = [];
-    // this.kubeService.selectedClusters$.next(this.selectedClusters);
-    // this.kubeService.selectedNs$.next(this.selectedNs);
-    // if (this.selectedClusters && this.selectedNs) {
-    //   this.getKubeResourceInfo();
-    // }
-  }
-
-
-  openFeedbackDialog(): void {
-    const dialogRef = this.dialog.open(UserFeedbackComponent, {
-      data: {feedback: this.feedback},
-    });
-
-    dialogRef.afterClosed().subscribe(result => {
-      result = 'The dialog was closed';
-      console.log(result);
-      this.feedback = '';
+      this.events = (data || []).slice().sort((a, b) =>
+        Date.parse(this.eventTime(b) || '1970-01-01') - Date.parse(this.eventTime(a) || '1970-01-01'));
+      this.eventsChecked = new Date();
+    }, error => {
+      this.loadingEvents = false;
+      this.eventsError = this.errorMessage(error, 'Kubernetes events');
     });
   }
-
-  getEvents(): void {
-    this.hasFailedEvents=false;
-    this.kubeService.getKubeEvents(this.selectedClusters, this.selectedNs).subscribe((res: any) => {
-      if (res) {
-        this.events = res;
-        this.events.sort((a:any, b:any) => {
-          return compare(a.DateHappened, b.DateHappened, false);
-        });
-        if (this.events.find((e: any) => e.Type!=="Normal")) {
-          this.hasFailedEvents = true;
-        }
-      }
-    }, (err: any) => {
-      console.log('Get Kube Events Error: ', err);
+  selectFinding(finding: Investigation): void {
+    this.allEvents = false;
+    this.copyStatus = '';
+    this.updateQuery({ finding: finding.id, tab: 'overview' });
+  }
+  selectTab(tab: DetailTab): void {
+    this.updateQuery({ finding: this.selected ? this.selected.id : null, tab });
+  }
+  filterChanged(): void {
+    this.updateQuery({ q: this.query || null, type: this.kindFilter || null, reason: this.reasonFilter || null,
+      name: this.nameFilter || null, finding: null, tab: 'overview' }, true);
+  }
+  clearFilters(): void {
+    this.query = this.kindFilter = this.reasonFilter = this.nameFilter = '';
+    this.filterChanged();
+  }
+  showFirstFinding(): void { this.updateQuery({ finding: null, tab: 'overview' }); }
+  private updateQuery(params: { [key: string]: string | null }, replaceUrl = false): void {
+    this.router.navigate(['/kubernetes/overview'], {
+      queryParams: { ...this.route.snapshot.queryParams, cluster: this.cluster || null, namespace: this.namespace || null, ...params },
+      replaceUrl
     });
   }
-
-  showEvents(): void {
-    this.gridToggle=true;
+  eventTime(event: KubeEvent): string | null { return validTimestamp(event.LastTimestamp) || validTimestamp(event.DateHappened); }
+  eventObject(event: KubeEvent): string {
+    const object = event.InvolvedObject || {};
+    return [object.Kind || object.kind, object.name || object.Name].filter(Boolean).join(' / ');
   }
-
-  close(): void {
-    this.gridToggle = false;
+  metadataEntries(finding: Investigation): { key: string; value: string }[] {
+    return Object.keys(finding.tags).sort().map(key => ({ key, value: finding.tags[key] }));
   }
-
-  sortData(header: string) {
-    this.events.sort((a:any, b:any) => {
-      var isAsc = this.isAsc;
-      switch (header) {
-        case 'type':
-          return compare(a.Type, b.Type, isAsc);
-        case 'resource':
-          return compare(a.InvolvedObject.name, b.InvolvedObject.name, isAsc);
-        case 'kind':
-          return compare(a.InvolvedObject.Kind, b.InvolvedObject.Kind, isAsc);
-        case 'reason':
-          return compare(a.Reason, b.Reason, isAsc);
-        case 'time':
-          return compare(a.DateHappened, b.DateHappened, isAsc);
-        default:
-          return 0;
-      }
-    });
+  async copy(text: string, label: string): Promise<void> {
+    if (this.copyTimer) { clearTimeout(this.copyTimer); }
+    try {
+      await navigator.clipboard.writeText(text);
+      this.copyStatus = label + ' copied';
+    } catch (_) {
+      this.copyStatus = 'Copy unavailable. Select the text to copy it manually.';
+    }
+    this.copyTimer = setTimeout(() => this.copyStatus = '', 5000);
   }
-
-}
-
-function compare(a: number | string, b: number | string, isAsc: boolean) {
-  return (a < b ? -1 : 1) * (isAsc ? 1 : -1);
+  copyLink(): void {
+    const tree = this.router.createUrlTree(['/kubernetes/overview'], { queryParams: {
+      cluster: this.cluster, namespace: this.namespace, finding: this.selected ? this.selected.id : this.selectedId, tab: this.tab
+    } });
+    this.copy(window.location.href.split('#')[0] + '#' + this.router.serializeUrl(tree), 'Investigation link');
+  }
+  private errorMessage(error: any, subject: string): string {
+    if (error && (error.status === 401 || error.status === 403)) {
+      return subject + ' are unavailable with your current access. Check your session and permissions.';
+    }
+    return subject + ' are unavailable. Check the connection and try again.';
+  }
 }

@@ -3,27 +3,34 @@
  *
  * SPDX-License-Identifier: Apache
  */
-@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@200;300;400;500;600;700&display=swap");
 * {
-  outline: none;
   box-sizing: border-box;
 }
 
 :root {
-  --body-bg-color: #e5ecef;
-  --theme-bg-color: #fafafb;
+  --on-active-color: #fff;
+  --selected-bg: #f0f4ff;
+  --selected-border: #ccd7fb;
+  --warning-color: #916019;
+  --warning-bg: #fff8e9;
+  --warning-border: #f0dfb8;
+  --danger-color: #a73535;
+  --danger-bg: #fff0f0;
+  --body-bg-color: #f5f7fb;
+  --theme-bg-color: #f5f7fb;
   --homepage-bg-color: #f7f4f7;
-  --body-font: "Poppins", sans-serif;
-  --body-color: #38405e; // #2f2f33;
-  --active-color: #346ee4; //#1bbbef; // #0162ff;
-  --active-light-color: #e1ebfb;
+  --body-font: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --mono-font: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --body-color: #202b43; // #2f2f33;
+  --active-color: #3b5cdb; //#1bbbef; // #0162ff;
+  --active-light-color: #edf1ff;
   --header-bg-color: #fff;
   --search-border-color: #efefef;
-  --border-color: #d8d8d8;
+  --border-color: #e2e7ef;
   --alert-bg-color: #e8f2ff;
   --highlight-bg-color: #ffffe0;
-  --subtitle-color: #5d7592; // #83838e;
-  --inactive-color: #f0f0f0;
+  --subtitle-color: #64718a; // #83838e;
+  --inactive-color: #edf0f5;
   --placeholder-color: #9b9ba5;
   --error-button: #e44c4d;
   --level-button: #5052d5;
@@ -50,19 +57,28 @@
 }
 
 .dark-mode {
+  --selected-bg: #202d4a;
+  --selected-border: #3c5689;
+  --warning-color: #ecc781;
+  --warning-bg: #352e21;
+  --warning-border: #615034;
+  --danger-color: #ffadad;
+  --danger-bg: #3d252b;
+  --active-color: #94adff;
+  --on-active-color: #13213d;
   --body-bg-color: #1d1d1d;
-  --theme-bg-color: #13131a;
+  --theme-bg-color: #151b27;
   --homepage-bg-color: #13131a;
-  --header-bg-color: #1c1c24;
+  --header-bg-color: #1c2433;
   --alert-bg-color: #292932;
   --highlight-bg-color: #292932;
-  --body-color: #fff;
-  --subtitle-color: #ccc;
+  --body-color: #e6edf7;
+  --subtitle-color: #a8b5ca;
   --inactive-color: #292932;
   --error-button: #ca3e47;
   --level-button: #fff;
-  --active-light-color: #346ee4;
-  --border-color: #26262f;
+  --active-light-color: #263859;
+  --border-color: #334055;
   --search-border-color: #26262f;
   --shadow: #424250cc;
   --light-shadow: #2862bf;
@@ -305,7 +321,7 @@ button:disabled {
           }
       }
   }
-  
+
   .popup .close {
       position: absolute;
       top: 15px;
@@ -467,4 +483,7 @@ button:disabled {
 }
 .cdk-overlay-container .mat-dialog-container {
   padding: 0px;
+}
+button, input, select, a, summary {
+  &:focus-visible { outline: 3px solid var(--active-color); outline-offset: 3px; }
 }

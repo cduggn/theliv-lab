@@ -13,7 +13,8 @@ describe('KubernetesService', () => {
 
   beforeEach(() => {
     mockHttpService = jasmine.createSpyObj('HttpClient', ['get']);
-    service = new KubernetesService(mockHttpService);
+    const browserWindow = { location: { href: 'http://localhost/theliv/' } } as Window;
+    service = new KubernetesService(browserWindow, mockHttpService);
   });
 
   it('should be created', () => {
