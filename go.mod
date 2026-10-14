@@ -1,6 +1,6 @@
 module github.com/fidelity/theliv
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.41.5
@@ -16,7 +16,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/wangli1030/saml v0.4.7
 	go.etcd.io/etcd/client/v3 v3.6.10
-	golang.org/x/oauth2 v0.36.0
+	golang.org/x/oauth2 v0.37.0
 	k8s.io/api v0.34.7
 	k8s.io/apimachinery v0.34.7
 	k8s.io/client-go v0.34.7
