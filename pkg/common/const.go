@@ -5,6 +5,8 @@
  */
 package common
 
+import "regexp"
+
 const (
 	Name          = "name"
 	Namespace     = "namespace"
@@ -39,3 +41,6 @@ const (
 
 	IngressMisconfigured = "IngressConfigurationError"
 )
+
+// ClusterNamePattern is the single rule for cluster names at every boundary.
+var ClusterNamePattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9_-]{0,61}[a-z0-9])?$`)

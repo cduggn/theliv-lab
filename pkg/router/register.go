@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"regexp"
 	"strings"
 
+	com "github.com/fidelity/theliv/pkg/common"
 	"github.com/fidelity/theliv/pkg/err"
 	log "github.com/fidelity/theliv/pkg/log"
 	"github.com/fidelity/theliv/pkg/service"
@@ -24,8 +24,6 @@ const (
 	errClusterNameTooShort = "cluster name must be at least 3 characters long"
 	errClusterNameInvalid  = "cluster name contains invalid characters"
 )
-
-var clusterNamePattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9_-]{0,61}[a-z0-9])?$`)
 
 func Register(r chi.Router) {
 	r.Post("/{cluster}", clusterRegister)
@@ -94,7 +92,7 @@ func validateClusterName(name string) error {
 		return fmt.Errorf(errClusterNameInvalid)
 	}
 	// Lowercase alphanumeric with hyphens and underscores
-	if !clusterNamePattern.MatchString(name) {
+	if !com.ClusterNamePattern.MatchString(name) {
 		return fmt.Errorf("cluster name must be lowercase alphanumeric with hyphens/underscores, start and end with alphanumeric")
 	}
 	return nil
