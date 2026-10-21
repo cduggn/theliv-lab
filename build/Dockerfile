@@ -1,4 +1,4 @@
-FROM golang:1.27 AS build-go
+FROM golang:1.27.3 AS build-go
 
 #Setup the proxy and No Proxy
 ARG https_proxy
