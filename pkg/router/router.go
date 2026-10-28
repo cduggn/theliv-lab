@@ -58,6 +58,8 @@ func Route(r chi.Router) {
 	// detector
 	r.Route("/detector", Detector)
 
+	r.Route("/agent", AgentMock)
+
 	// userinfo
 	r.Route("/userinfo", Userinfo)
 

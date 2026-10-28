@@ -27,7 +27,7 @@ func StartAuth(handler http.Handler) http.Handler {
 		if oidc != nil {
 			callBackPath = getUrlPath(oidc.CallBack)
 		}
-		if r.URL.Path == "/theliv-api/v1/health" || r.URL.Path == "/theliv-api/v1/metrics" || (callBackPath != "" && r.URL.Path == callBackPath) {
+		if r.URL.Path == "/theliv-api/v1/health" || r.URL.Path == "/theliv-api/v1/metrics" || r.URL.Path == "/theliv-api/v1/agent/mock/report" || (callBackPath != "" && r.URL.Path == callBackPath) {
 			handler.ServeHTTP(w, r)
 			return
 		}
