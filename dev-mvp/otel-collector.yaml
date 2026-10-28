@@ -1,0 +1,25 @@
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+connectors:
+  spanmetrics:
+
+exporters:
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+  prometheusremotewrite:
+    endpoint: http://prometheus:9090/api/v1/write
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [spanmetrics, otlp/tempo]
+    metrics:
+      receivers: [spanmetrics]
+      exporters: [prometheusremotewrite]

@@ -1,0 +1,9 @@
+port: 8080
+loglevel: 0
+clusterDir: ./dev-mvp/k8s
+teamName: mvp
+auth:
+  whitelistpath:
+    - /configinfo
+problemlevel:
+  managednamespaces: []
