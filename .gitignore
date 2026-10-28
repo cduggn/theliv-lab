@@ -1,5 +1,9 @@
-﻿.vscode
+.vscode
 node_modules
 dist
 .DS_Store
 localdockerbuild.sh
+.local
+agent/.venv
+__pycache__/
+.pytest_cache/
